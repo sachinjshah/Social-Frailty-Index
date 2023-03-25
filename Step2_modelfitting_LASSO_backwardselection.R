@@ -19,6 +19,7 @@ library ("SparseM", lib="//vhasfcreap/Sun/SEI_IIR/R packages")
 library ("rms", lib="//vhasfcreap/Sun/SEI_IIR/R packages")
 library ("PredictABEL", lib="//vhasfcreap/Sun/SEI_IIR/R packages")
 library ("nricens", lib="//vhasfcreap/Sun/SEI_IIR/R packages")
+library ("stats", lib="//vhasfcreap/Sun/SEI_IIR/R packages")
 
 
 #data=read.csv("V:/Health and Retirement Study/Sun/Sachin/psychosocial/data_interim/10012020 cohort_2010_allvars.csv") #178 variables + 1 age + 3 (HHIPDN, dod, death_flag) = 182 cols
@@ -232,8 +233,6 @@ toc()
 #########################################
 
 model.mx = model.mx.sp
-model.mx = 
-
 
 
 set.seed(1234)
@@ -288,4 +287,18 @@ glm_fit[[4]] = glm(data.death_flag~Charlson, data=model.sp.morbid , family=binom
 #                    data=model.sp.morbid , family=binomial, na.action=na.omit )
 
 
+################################
+#### glm backward selection 
+################################
+
+glm_selected = glm(data.death_flag ~ MLB001B+MLB001F+MLB020C+MLB020J+MLB039C+MLB001D2+MLB020D2+MLB021F2+MLB0262+MLB030A2+  
+                    MLB030C2+MLB017C2+MLB032C6+MLB009A6+MLB037C5+R10RETSAT3+R10WORK1+RAGENDER2 + data.MAGE+ MAGE_sp1, 
+                   data = model.mx.comorb, family = binomial, na.action=na.omit)
+n = dim(model.mx.comorb)[1]
+glm_backward = step(glm_selected, direction="backward", k=log(n))
+pred_bw = predict(glm_backward, model.mx.comorb)
+
+print(roc(as.vector(model.mx.comorb[,1]), pred_bw)) 
+predict.test = predict(glm_backward, as.data.frame(model.mx.sp12[, 2:(ncol(model.mx.sp12))]))
+roc.test = roc(as.vector(model.mx.sp12[,1]), as.vector(predict.test)) 
 
