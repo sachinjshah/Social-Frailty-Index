@@ -1,0 +1,225 @@
+---
+title: "SFI x Charlson"
+author: "Sachin Shah"
+date: "2/9/2022"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+##if you need to set the wd: /Volumes/shahsac_BL5/SVI
+
+## SETUP
+library(tidyverse)
+library(rms)
+library(haven)
+library(knitr)
+library(ggplot2)
+library(scales)
+library(ggsignif)
+
+sachin_theme_leg <- theme_bw()+
+  theme(panel.background = element_blank(), axis.line = element_line(colour = "grey75"), panel.border = element_blank(),
+        panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank(), panel.grid.major.y = element_line(color = "grey", linetype = "dotted", size = 0.2 ),
+        panel.grid.minor.y = element_blank(), legend.position = "top", legend.title = element_blank(), axis.title=element_text(size=10))
+
+
+## Load data and create decile of predicted risk
+data.sfi <- read.csv("results/02222022 trimmed_model_results/02222022 test_results.csv")
+```
+
+# SVI x Charlson
+
+SVI and Charlson are not correlated
+```{r correlation}
+
+cor.test(data.sfi$Charlson, data.sfi$test.prob, method=c("pearson"))
+
+```
+
+# Version 1 with error bars
+```{r version 1}
+## Stratifed by Charlson quartile
+
+
+data.sfi = data.sfi %>% 
+            mutate(Charlson_tertile = ntile(Charlson, 3)) %>% 
+            mutate(Charlson_tertile = factor(Charlson_tertile)) %>% 
+            mutate(tertile_p = ntile(test.wo.age.prob, 3)) %>% 
+            mutate(tertile_p = factor(tertile_p)) %>% 
+            filter(Charlson_tertile %in% c(1, 2, 3) & tertile_p %in% c(1,2,3))
+      
+data.sfi.plot = data.sfi %>% 
+  group_by(Charlson_tertile, tertile_p) %>% 
+  summarise(n=n(), sum_death = sum(death_flag),  .groups = 'drop') %>% 
+  mutate(obs = sum_death/n, LL = (obs - 1.96*(obs*(1-obs)/n)^0.5), UL = (obs + 1.96*(obs*(1-obs)/n)^0.5)) 
+
+plot.strat.charlson <- 
+  ggplot(data.sfi.plot, aes(x=Charlson_tertile, y=obs))+
+  geom_bar(aes(fill=tertile_p), stat="identity", position="dodge2", alpha = 0.75) +
+  scale_y_continuous(name = "Observed 4-year mortality rate", 
+                     limits = c(0, .6), 
+                     breaks = seq(0, .6, by = 0.1)) +
+  scale_x_discrete(name = "Tertile of Charlson Score",
+                    breaks = c(1, 2, 3),
+                     labels=c("Low", "Middle", "High"))+
+  sachin_theme_leg +
+  scale_fill_discrete(name = "Tertile of Social Frailty Index", labels=c("Low", "Middle", "High")) +
+  theme(legend.title = element_text(size=10))
+
+plot.strat.charlson.error <- plot.strat.charlson + geom_errorbar(aes(ymin=LL, ymax=UL), position=position_dodge2(width=0.5, padding =0.8))
+
+#ggsave(paste0("results/SFI x Charlson w error bars ", format(Sys.time(), "%Y-%m-%d_%H-%M"), ".png"), plot.strat.charlson.error , width = 6, height = 5)
+plot.strat.charlson.error 
+
+data.sfi %>% 
+  group_by(Charlson_tertile, tertile_p) %>% 
+  summarise(n=n(), sum_death = sum(death_flag), .groups = 'drop') %>% 
+  mutate(obs = sum_death/n, LL = (obs - 1.96*(obs*(1-obs)/n)^0.5), UL = (obs + 1.96*(obs*(1-obs)/n)^0.5), freq_group = (n/sum(n))) %>% 
+  kable(digits = 2)
+
+```
+
+
+# Version 2 removes the error bars and adds in signficance testing 
+
+```{r version 2}
+## VERSION 2 with significance levels
+
+
+data.sfi$tertile_p <- as.numeric(data.sfi$tertile_p)
+
+temp <- data.sfi %>% filter(Charlson_tertile ==1 & (tertile_p ==1 | tertile_p==2 )) 
+(mytab <- with(temp,table(tertile_p,death_flag)) )
+a <- chisq.test(mytab)
+data.testing <- data.frame(1, 1, 2, a$p.value)
+names(data.testing) <-c("Charlson_tertile", "SFI_tertile1", "SFI_tertiel2", "pvalue")
+
+temp <- data.sfi %>% filter(Charlson_tertile ==1 & (tertile_p ==2 | tertile_p==3 )) 
+(mytab <- with(temp,table(tertile_p,death_flag)) )
+a <- chisq.test(mytab)
+data.testing[nrow(data.testing) + 1, ]= c(1, 2, 3, a$p.value)
+
+temp <- data.sfi %>% filter(Charlson_tertile ==1 & (tertile_p ==1 | tertile_p==3)) 
+(mytab <- with(temp,table(tertile_p,death_flag)) )
+a <- chisq.test(mytab)
+data.testing[nrow(data.testing) + 1, ]= c(1, 1, 3, a$p.value)
+
+temp <- data.sfi %>% filter(Charlson_tertile ==2 & (tertile_p ==1 | tertile_p==2 )) 
+(mytab <- with(temp,table(tertile_p,death_flag)) )
+a <- chisq.test(mytab)
+data.testing[nrow(data.testing) + 1, ]= c(2, 1, 2, a$p.value)
+
+temp <- data.sfi %>% filter(Charlson_tertile ==2 & (tertile_p ==2 | tertile_p==3 )) 
+(mytab <- with(temp,table(tertile_p,death_flag)) )
+a <- chisq.test(mytab)
+data.testing[nrow(data.testing) + 1, ]= c(2, 2, 3, a$p.value)
+
+temp <- data.sfi %>% filter(Charlson_tertile ==2 & (tertile_p ==1 | tertile_p==3)) 
+(mytab <- with(temp,table(tertile_p,death_flag)) )
+a <- chisq.test(mytab)
+data.testing[nrow(data.testing) + 1, ]= c(2, 1, 3, a$p.value)
+
+temp <- data.sfi %>% filter(Charlson_tertile ==3 & (tertile_p ==1 | tertile_p==2 )) 
+(mytab <- with(temp,table(tertile_p,death_flag)) )
+a <- chisq.test(mytab)
+data.testing[nrow(data.testing) + 1, ]= c(3, 1, 2, a$p.value)
+
+temp <- data.sfi %>% filter(Charlson_tertile ==3 & (tertile_p ==2 | tertile_p==3 )) 
+(mytab <- with(temp,table(tertile_p,death_flag)) )
+a <- chisq.test(mytab)
+data.testing[nrow(data.testing) + 1, ]= c(3, 2, 3, a$p.value)
+
+temp <- data.sfi %>% filter(Charlson_tertile ==3 & (tertile_p ==1 | tertile_p==3)) 
+(mytab <- with(temp,table(tertile_p,death_flag)) )
+a <- chisq.test(mytab)
+data.testing[nrow(data.testing) + 1, ]= c(3, 1, 3, a$p.value)
+
+data.testing =
+data.testing %>% 
+  mutate(annotation = ifelse(pvalue < 0.001, "***", ifelse(pvalue<0.01, "**", ifelse(pvalue<0.05, "*", "NS")))) %>% 
+  mutate(x = Charlson_tertile + (SFI_tertile1-2)*0.3, 
+         xend = Charlson_tertile + (SFI_tertiel2-2)*0.3)
+    
+data.testing$y= c(0.2, 0.3, 0.35, 0.25, 0.3, 0.35, 0.45, 0.5, 0.5)              
+data.testing.slim <- data.testing %>% filter(pvalue <0.05) 
+data.testing.slim$padj <- c(1, 2, 3, 4, 5, 6) #dummy group b/c of bug in package https://github.com/const-ae/ggsignif/issues/63
+
+plot.strat.charlson.sig <- plot.strat.charlson + 
+  geom_signif(tip_length = 0.01,
+              xmin=data.testing.slim$x,
+              xmax=data.testing.slim$xend, 
+              y_position=data.testing.slim$y, 
+              annotation=data.testing.slim$annotation)
+  
+#ggsave(paste0("results/SFI x Charlson w sig testing ", format(Sys.time(), "%Y-%m-%d_%H-%M"), ".png"), plot.strat.charlson.sig , width = 6, height = 5)
+
+plot.strat.charlson.sig
+
+data.testing %>% kable(digits = 4)
+
+```
+
+```{r V2, include=T}
+
+data.sfi.plot <- data.sfi.plot %>% 
+  mutate(percent = n/nrow(data.sfi)*100) %>%
+  mutate(Name = paste0(round(percent, digits=0), "%")) %>% 
+  mutate(tertile_p = factor(tertile_p)) %>% 
+  mutate(Charlson_tertile = factor(Charlson_tertile))
+
+data.testing.slim <-data.testing.slim %>% 
+ mutate(x2 = Charlson_tertile + (SFI_tertile1-2)*0.225, 
+         xend2 = Charlson_tertile + (SFI_tertiel2-2)*0.225)
+
+data.testing.slim$y2 <- c(0.30, 0.34, 0.31, 0.35, 0.45, 0.51)
+
+plot.strat.charlson.sig.bubble <- 
+  ggplot(data.sfi.plot, aes(x=Charlson_tertile, y=obs, group=tertile_p, label = Name))+
+  geom_point(aes(size = percent, color = tertile_p), alpha = 0.5,  position=position_dodge2(width=0.6, padding =0.8))   +
+  geom_text(position=position_dodge2(width=0.6), size=2.4, fontface = "bold", color = "black") +
+  #geom_text(position=position_dodge2(width=0.5), hjust = -1, size=2) +
+  scale_size_area(max_size=10.7)+
+  #scale_size_continuous(range = c(4, 7.9)) +
+  scale_y_continuous(name = "Observed 4-year mortality rate", 
+                     limits = c(0, .6), 
+                     breaks = seq(0, .6, by = 0.1)) +
+  scale_x_discrete(name = "Tertile of Charlson Score",
+                    breaks = c(1, 2, 3),
+                     labels=c("Low", "Middle", "High"))+
+  sachin_theme_leg +
+  scale_color_discrete(name = "Tertile of Social Frailty Index", labels=c("Low", "Middle", "High")) +
+  theme(legend.title = element_text(size=10)) + 
+   geom_signif(tip_length = 0.01,
+              xmin=data.testing.slim$x2,
+              xmax=data.testing.slim$xend2, 
+              y_position=data.testing.slim$y2, 
+              annotation=data.testing.slim$annotation) +
+    guides(color=guide_legend(order=1),
+           size = "none") 
+
+plot.strat.charlson.sig.bubble +
+ theme(plot.caption = element_text(hjust = 0)) + # set the left align here
+    labs(title="Figure 4: Observed mortality in 2012 Validation Cohort by Social Frailty\n and Charlson score", 
+                    caption = 
+"Legend:
+The bubble chart compares observed mortality in the validation cohort by tertile of Social Frailty within \n tertiles of Charlson score, a comorbidity risk model. The Charlson score cohort was completed in a subset\n of the study cohort where 12 months of Medicare data were available to calculate a Charlson score (2226\n of 3948). Since the Charlson score does not include age, when comparing it with the Social Frailty Index,\n we remove age from the Social Frailty Index to provide a fair comparison. 
+
+The area of each bubble is proportional to the total validation cohort that falls the specific group (e.g.,\n 15% of the cohort has a low Charlson score and low Social Frailty Index score). Significantly different\n values are highlighted by a bracket. *** p<0.001, ** p<0.01, * p<0.05. Results presented in tabular form\n in Appendix 7.
+
+") -> plot.strat.charlson.sig.bubble.paper
+    	
+    
+    
+ggsave(paste0("results/SFI x Charlson w sig testing bubble", format(Sys.time(), "%Y-%m-%d_%H-%M"), ".png"), plot.strat.charlson.sig.bubble, width = 6.5, height = 5)   
+
+ggsave(paste0("results/SFI x Charlson w sig testing bubble", format(Sys.time(), "%Y-%m-%d_%H-%M"), ".tiff"), plot.strat.charlson.sig.bubble, width = 6.5, height = 5)   
+plot.strat.charlson.sig.bubble
+    
+    
+
+```
+

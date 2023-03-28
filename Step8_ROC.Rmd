@@ -1,0 +1,99 @@
+---
+title: "ROC curves SVI"
+author: "Sachin J Shah"
+date: "June 16, 2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+##Notes
+v2 - Sachin update on 2/8/21 to format figures
+v3 - final prediction model 2/22/22
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+## Load the libraries we will be using
+library(tidyverse)
+library(ggthemes)   
+library(haven)
+library(plotROC)
+library(pROC)
+#install.packages("gtable")
+library(gtable)
+
+#data.roc <- read.csv("results/02222022 trimmed_model_results/02222022 test_results.csv")
+data.roc <- read.csv("results/03022022 results_with_race_edu_hospitalization/03022022 test_results_hosp_race_edu.csv")
+
+```
+
+## R Markdown
+
+
+```{r data}
+
+#Death
+roc.death <- 
+  ggplot(data.roc, aes(m = test.prob, d = death_flag))+ 
+  geom_roc(n.cuts=0,labels=FALSE) +
+  scale_x_continuous(name = "1 - Specificity") + 
+  scale_y_continuous(name = "Sensitivity") 
+
+roc.death <- roc.death + 
+  labs(title=paste0("A. Death (AUC=", format(round(calc_auc(roc.death)$AUC, 3), nsmall=3), ")"))
+roc.death #0.734
+
+#ADL
+data.adl= data.roc[which(data.roc$ADL_2012==0 & data.roc$ADL_2016>=0), ]
+ auc(roc(data.adl$ADL_2016, data.adl$test.prob)) #0.7184
+ 
+ roc.adl <- ggplot(data.adl, aes(m = test.prob, d = ADL_2016))+
+             geom_roc(n.cuts=0,labels=FALSE) +
+             scale_x_continuous(name = "1 - Specificity") +
+             scale_y_continuous(name = "Sensitivity")
+ 
+ roc.adl <- roc.adl +
+   labs(title=paste0("B. New ADL dependency (AUC=", format(round(calc_auc(roc.adl)$AUC, 3), nsmall=3),")"))
+ 
+ roc.adl
+ 
+ #NH
+ data.nh = data.roc[which(data.roc$NH_12==0 & data.roc$NH_14_16>=0), ]
+ auc(roc(data.nh$NH_14_16, data.nh$test.prob)) #0.7386
+ 
+ roc.nh <- ggplot(data.nh, aes(m = test.prob, d = NH_14_16))+
+             geom_roc(n.cuts=0,labels=FALSE) +
+             scale_x_continuous(name = "1 - Specificity") +
+             scale_y_continuous(name = "Sensitivity")
+ 
+ roc.nh <- roc.nh +
+   labs(title=paste0("C. Nursing home stay (AUC=", format(round(calc_auc(roc.nh)$AUC, 3), nsmall=3),")"))
+ 
+ roc.nh
+
+#Hosp
+ data.hosp <- filter( data.roc, hospitalization %in% c(0,1))
+ auc(roc(data.hosp$hospitalization, data.hosp$test.prob)) #0.6401
+ 
+ roc.hosp <- ggplot(data.hosp, aes(m = test.prob, d = hospitalization))+
+             geom_roc(n.cuts=0,labels=FALSE) +
+             scale_x_continuous(name = "1 - Specificity") +
+             scale_y_continuous(name = "Sensitivity")
+
+     roc.hosp <- roc.hosp +
+   labs(title=paste0("D. Hospitalization (AUC=", format(round(calc_auc(roc.hosp)$AUC, 3), nsmall=3),")"))
+ 
+ roc.hosp
+
+roc.all <- gridExtra::grid.arrange(roc.death, roc.adl, roc.nh, roc.hosp,  nrow = 2)
+ggsave(paste0("results/ROC all ", format(Sys.time(), "%Y-%m-%d_%H-%M"), ".eps"), roc.all , width = 7, height = 7)
+ggsave(paste0("results/ROC all ", format(Sys.time(), "%Y-%m-%d_%H-%M"), ".png"), roc.all , width = 7, height = 7)
+ 
+#ggsave(paste0("results/ROC death ", format(Sys.time(), "%Y-%m-%d_%H-%M"), ".svg"), roc.death , width = 4, height = 4)
+#ggsave(paste0("results/ROC ADL ", format(Sys.time(), "%Y-%m-%d_%H-%M"), ".svg"), roc.adl , width = 4, height = 4)
+#ggsave(paste0("results/ROC NH ", format(Sys.time(), "%Y-%m-%d_%H-%M"), ".svg"), roc.nh , width = 4, height = 4)
+#ggsave(paste0("results/ROC Hosp ", format(Sys.time(), "%Y-%m-%d_%H-%M"), ".svg"), roc.hosp , width = 4, height = 4)
+
+```
+
